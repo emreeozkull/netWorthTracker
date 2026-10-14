@@ -24,7 +24,11 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "io.github.networth.app",
-      "allowBackup": false
+      "allowBackup": false,
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "web": {
       "output": "static",
@@ -58,6 +62,9 @@
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {}
     }
   }
 }

@@ -62,7 +62,12 @@ npx eas-cli@latest build --platform ios --profile production
 npx eas-cli@latest build --platform android --profile production
 ```
 
-Change `ios.bundleIdentifier` and `android.package` in `app.json` to identifiers you own before publishing.
+Your own identifiers are kept out of the repository. Copy `.env.example` to `.env.local` (gitignored) and set:
+
+- `APP_BUNDLE_ID`: an iOS bundle identifier / Android package name you own, e.g. `com.yourname.networth`
+- `EAS_PROJECT_ID`: your EAS project ID (from `npx eas-cli@latest init` or expo.dev)
+
+`app.config.ts` reads them for both `expo` and `eas` commands. Without them, the placeholder `io.github.networth.app` from `app.json` is used. For builds on EAS servers, also define both as [EAS environment variables](https://docs.expo.dev/eas/environment-variables/), because `.env.local` isn't uploaded.
 
 ## Contributing
 
