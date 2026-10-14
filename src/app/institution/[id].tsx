@@ -1,10 +1,12 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Donut } from '@/components/charts';
+import { Donut, LineChart } from '@/components/charts';
 import { Button, Card, IconButton, ListRow, Screen, SectionTitle, Txt } from '@/components/ui';
 import { usePriceRefresh } from '@/components/usePriceRefresh';
 import { allocationBy, netWorth, valueHoldings } from '@/domain/aggregate';
+import { accountSeries } from '@/domain/history';
 import type { AssetKind } from '@/domain/types';
 import { unitPrice } from '@/domain/valuation';
 import { useFormat } from '@/i18n/format';
@@ -22,6 +24,7 @@ export default function InstitutionDetail() {
   const { refreshControl } = usePriceRefresh();
   const base = data.settings.baseCurrency;
   const institution = data.institutions.find((i) => i.id === id);
+  const history = useMemo(() => accountSeries(data.snapshots, base, id), [data.snapshots, base, id]);
 
   if (!institution) {
     return (
@@ -69,6 +72,15 @@ export default function InstitutionDetail() {
         )}
         {institution.note ? <Txt variant="muted">{institution.note}</Txt> : null}
       </Card>
+
+      {history.length >= 2 && (
+        <>
+          <SectionTitle>{t('history.accountHistory')}</SectionTitle>
+          <Card>
+            <LineChart points={history} currency={base} />
+          </Card>
+        </>
+      )}
 
       {slices.length > 1 && (
         <Card>

@@ -12,7 +12,7 @@ import {
   type Market,
   type Settings,
 } from '@/domain/types';
-import { fetchPrices } from '@/prices';
+import { fetchAssetQuote, fetchPrices } from '@/prices';
 import { loadData, saveData, wipeData } from '@/storage/repo';
 
 type WithOptionalId<T extends { id: string }> = Omit<T, 'id'> & { id?: string };
@@ -34,13 +34,18 @@ interface AppState {
   deleteHolding(id: string): void;
   updateSettings(patch: Partial<Settings>): void;
   updateMarket(patch: Partial<Market>): void;
-  refreshPrices(): Promise<string[]>;
+  /** Fetches FX, gold and all `auto` prices. `silent` skips the pull-to-refresh spinner. Returns errors. */
+  refreshPrices(opts?: { silent?: boolean }): Promise<string[]>;
+  /** Fetches the quote of one `auto` asset, e.g. right after it was added. Returns an error message on failure. */
+  refreshAsset(id: string): Promise<string | undefined>;
   replaceData(data: AppData): void;
   loadDemo(): void;
   wipe(): Promise<void>;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+/** Shared by concurrent refreshes (e.g. the daily auto refresh and a pull-to-refresh). */
+let refreshInFlight: Promise<string[]> | undefined;
 let pendingSave: AppData | undefined;
 
 function scheduleSave(data: AppData) {
@@ -155,12 +160,14 @@ export const useAppStore = create<AppState>((set, get) => {
       commit((d) => ({ ...d, market: { ...d.market, ...patch } }));
     },
 
-    async refreshPrices() {
-      const { data, refreshing } = get();
-      if (!data.settings.fetchEnabled || refreshing) return [];
-      set({ refreshing: true });
-      try {
-        const update = await fetchPrices(data);
+    async refreshPrices(opts) {
+      if (!get().data.settings.fetchEnabled) return [];
+      const run = async () => {
+        const update = await fetchPrices(get().data);
+        const succeeded =
+          update.market.ratesUpdatedAt === update.fetchedAt ||
+          update.market.goldUpdatedAt === update.fetchedAt ||
+          Object.keys(update.prices).length > 0;
         commit((d) => ({
           ...d,
           // Keep any manual edits made while the fetch was in flight.
@@ -168,6 +175,8 @@ export const useAppStore = create<AppState>((set, get) => {
             ...update.market,
             manualRates: d.market.manualRates,
             manualGoldGram: d.market.manualGoldGram,
+            // A fully failed attempt (e.g. offline) doesn't count, so the daily refresh retries.
+            pricesFetchedAt: succeeded ? update.fetchedAt : d.market.pricesFetchedAt,
           },
           assets: d.assets.map((a) =>
             update.prices[a.id] !== undefined
@@ -176,8 +185,40 @@ export const useAppStore = create<AppState>((set, get) => {
           ),
         }));
         return update.errors;
+      };
+      if (!opts?.silent) set({ refreshing: true });
+      try {
+        refreshInFlight ??= run().finally(() => {
+          refreshInFlight = undefined;
+        });
+        return await refreshInFlight;
       } finally {
-        set({ refreshing: false });
+        if (!opts?.silent) set({ refreshing: false });
+      }
+    },
+
+    async refreshAsset(id) {
+      const { data } = get();
+      const asset = data.assets.find((a) => a.id === id);
+      if (!data.settings.fetchEnabled || !asset || asset.priceMode !== 'auto' || !asset.symbol?.trim()) {
+        return undefined;
+      }
+      try {
+        const { price, usdRates } = await fetchAssetQuote(asset, data.market, data.settings.finnhubKey);
+        const fetchedAt = Date.now();
+        commit((d) => ({
+          ...d,
+          market: usdRates ? { ...d.market, usdRates: { ...d.market.usdRates, ...usdRates } } : d.market,
+          // Skip if the asset was edited to a different symbol or currency in the meantime.
+          assets: d.assets.map((a) =>
+            a.id === id && a.symbol === asset.symbol && a.currency === asset.currency
+              ? { ...a, lastPrice: price, lastPriceAt: fetchedAt }
+              : a,
+          ),
+        }));
+        return undefined;
+      } catch (e) {
+        return `${asset.symbol}: ${(e as Error).message}`;
       }
     },
 

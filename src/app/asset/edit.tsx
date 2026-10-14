@@ -14,15 +14,20 @@ export default function EditAsset() {
   const c = useColors();
   const data = useData();
   const upsert = useAppStore((s) => s.upsertAsset);
+  const refreshAsset = useAppStore((s) => s.refreshAsset);
   const remove = useAppStore((s) => s.deleteAsset);
   const existing = data.assets.find((a) => a.id === id);
-  const [draft, setDraft] = useState(() => draftFromAsset(existing, data.settings.baseCurrency));
+  const [draft, setDraft] = useState(() =>
+    draftFromAsset(existing, data.settings.baseCurrency, data.settings.fetchEnabled),
+  );
   const [error, setError] = useState<string>();
 
   const save = () => {
     const result = draftToAsset(draft, existing);
     if (!result.asset) return setError(result.error);
-    upsert({ ...result.asset, id: existing?.id });
+    const id = upsert({ ...result.asset, id: existing?.id });
+    // New auto assets, or ones whose symbol or currency changed, have no fetched price yet: get one now.
+    if (result.asset.priceMode === 'auto' && result.asset.lastPrice === undefined) void refreshAsset(id);
     router.back();
   };
 

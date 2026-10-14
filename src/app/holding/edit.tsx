@@ -20,6 +20,7 @@ export default function EditHolding() {
   const data = useData();
   const upsertHolding = useAppStore((s) => s.upsertHolding);
   const upsertAsset = useAppStore((s) => s.upsertAsset);
+  const refreshAsset = useAppStore((s) => s.refreshAsset);
   const deleteHolding = useAppStore((s) => s.deleteHolding);
   const existing = data.holdings.find((h) => h.id === params.id);
 
@@ -30,7 +31,9 @@ export default function EditHolding() {
     existing || params.assetId || data.assets.length > 0 ? 'existing' : 'new',
   );
   const [assetId, setAssetId] = useState(existing?.assetId ?? params.assetId ?? '');
-  const [draft, setDraft] = useState(() => draftFromAsset(undefined, data.settings.baseCurrency));
+  const [draft, setDraft] = useState(() =>
+    draftFromAsset(undefined, data.settings.baseCurrency, data.settings.fetchEnabled),
+  );
   const [quantity, setQuantity] = useState(existing ? String(existing.quantity) : '');
   const [avgCost, setAvgCost] = useState(existing?.avgCost !== undefined ? String(existing.avgCost) : '');
   const [note, setNote] = useState(existing?.note ?? '');
@@ -56,10 +59,12 @@ export default function EditHolding() {
     const qty = parseDecimal(quantity);
     if (qty === undefined || qty < 0) return setError(t('forms.quantityInvalid'));
     let finalAssetId = assetId;
+    let fetchNewAsset = false;
     if (assetMode === 'new') {
       const result = draftToAsset(draft);
       if (!result.asset) return setError(t(result.error!));
       finalAssetId = upsertAsset(result.asset);
+      fetchNewAsset = result.asset.priceMode === 'auto';
     } else if (!selectedAsset) {
       return setError(t('forms.pickAsset'));
     }
@@ -71,6 +76,8 @@ export default function EditHolding() {
       avgCost: isCash ? undefined : parseDecimal(avgCost),
       note: note.trim() || undefined,
     });
+    // Fetch the new asset's live price right away; it lands in the store when it arrives.
+    if (fetchNewAsset) void refreshAsset(finalAssetId);
     router.back();
   };
 

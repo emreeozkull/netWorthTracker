@@ -1,5 +1,5 @@
 import type { AppData, Asset, Market } from '@/domain/types';
-import { convert } from '@/domain/valuation';
+import { convert, usdRate } from '@/domain/valuation';
 
 import { coingeckoQuote } from './coingecko';
 import { finnhubQuote } from './finnhub';
@@ -27,7 +27,9 @@ async function firstOf(attempts: (() => Promise<Quote>)[]): Promise<Quote> {
   throw lastError;
 }
 
-function quoteAttempts(asset: Asset, finnhubKey?: string): (() => Promise<Quote>)[] {
+type QuoteTarget = Pick<Asset, 'kind' | 'symbol' | 'currency'>;
+
+function quoteAttempts(asset: QuoteTarget, finnhubKey?: string): (() => Promise<Quote>)[] {
   const symbol = asset.symbol!.trim();
   if (asset.kind === 'crypto') {
     return [
@@ -38,6 +40,48 @@ function quoteAttempts(asset: Asset, finnhubKey?: string): (() => Promise<Quote>
   const attempts = [() => yahooQuote(symbol)];
   if (finnhubKey) attempts.push(() => finnhubQuote(symbol, finnhubKey));
   return attempts;
+}
+
+/** Raw quote for a symbol, in whatever currency the provider reports it. */
+export async function fetchQuote(asset: QuoteTarget, finnhubKey?: string): Promise<Quote> {
+  if (!asset.symbol?.trim()) throw new Error('No symbol');
+  return firstOf(quoteAttempts(asset, finnhubKey));
+}
+
+/** Units of `currency` per 1 USD, from Yahoo's FX quote. */
+async function fetchUsdRate(currency: string): Promise<number> {
+  return (await yahooQuote(`USD${currency}=X`)).price;
+}
+
+export interface ConvertedPrice {
+  price: number;
+  /** Rates fetched to make the conversion possible; merge into `market.usdRates`. */
+  usdRates?: Record<string, number>;
+}
+
+/** Converts a quote to `currency`, fetching any exchange rate the market is missing. */
+export async function quoteInCurrency(quote: Quote, currency: string, market: Market): Promise<ConvertedPrice> {
+  const direct = convert(quote.price, quote.currency, currency, market);
+  if (direct !== undefined) return { price: direct };
+  const usdRates: Record<string, number> = {};
+  for (const c of [quote.currency, currency]) {
+    if (c !== 'USD' && usdRate(market, c) === undefined) usdRates[c] = await fetchUsdRate(c);
+  }
+  const price = convert(quote.price, quote.currency, currency, {
+    ...market,
+    usdRates: { ...market.usdRates, ...usdRates },
+  });
+  if (price === undefined) throw new Error(`no ${quote.currency}→${currency} rate`);
+  return { price, usdRates };
+}
+
+/** Current price of one unit of an `auto` asset, in the asset's own currency. Throws on failure. */
+export async function fetchAssetQuote(
+  asset: QuoteTarget,
+  market: Market,
+  finnhubKey?: string,
+): Promise<ConvertedPrice> {
+  return quoteInCurrency(await fetchQuote(asset, finnhubKey), asset.currency, market);
 }
 
 /**
@@ -63,7 +107,7 @@ export async function fetchPrices(data: AppData): Promise<PriceUpdate> {
       .filter((c) => c !== 'USD' && !market.usdRates[c])
       .map(async (c) => {
         try {
-          market.usdRates = { ...market.usdRates, [c]: (await yahooQuote(`USD${c}=X`)).price };
+          market.usdRates = { ...market.usdRates, [c]: await fetchUsdRate(c) };
           market.ratesUpdatedAt = fetchedAt;
         } catch (e) {
           errors.push(`FX ${c}: ${(e as Error).message}`);
@@ -84,9 +128,8 @@ export async function fetchPrices(data: AppData): Promise<PriceUpdate> {
   await Promise.all(
     autoAssets.map(async (asset) => {
       try {
-        const quote = await firstOf(quoteAttempts(asset, data.settings.finnhubKey));
-        const price = convert(quote.price, quote.currency, asset.currency, market);
-        if (price === undefined) throw new Error(`no ${quote.currency}→${asset.currency} rate`);
+        const { price, usdRates } = await fetchAssetQuote(asset, market, data.settings.finnhubKey);
+        if (usdRates) market.usdRates = { ...market.usdRates, ...usdRates };
         prices[asset.id] = price;
       } catch (e) {
         errors.push(`${asset.symbol}: ${(e as Error).message}`);

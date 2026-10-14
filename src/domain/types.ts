@@ -73,6 +73,31 @@ export interface Holding {
 export interface Snapshot {
   date: string;
   values: Record<string, number>;
+  /** Per-holding detail for the day. Absent on snapshots recorded before detailed history existed. */
+  holdings?: SnapshotHolding[];
+  /** Effective units of currency per 1 USD that day (manual overrides applied), for converting `holdings`. */
+  usdRates?: Record<string, number>;
+}
+
+/**
+ * One position as it stood on a snapshot day. Names are copied so history survives
+ * renames and deletions of the account or asset.
+ */
+export interface SnapshotHolding {
+  holdingId: string;
+  institutionId: string;
+  institutionName: string;
+  assetId: string;
+  assetName: string;
+  symbol?: string;
+  kind: AssetKind;
+  /** Currency of `unitPrice` and `value`. */
+  currency: string;
+  quantity: number;
+  /** Unit price in `currency` used that day; undefined when no price was known. */
+  unitPrice?: number;
+  /** Signed value in `currency` (debts negative); undefined when it couldn't be valued. */
+  value?: number;
 }
 
 export interface Settings {
@@ -95,6 +120,8 @@ export interface Market {
   goldUpdatedAt?: number;
   /** User-entered price of 1 gram of pure gold. Takes precedence over the fetched spot price. */
   manualGoldGram?: { price: number; currency: string };
+  /** Last successful online price refresh; drives the once-a-day automatic refresh. */
+  pricesFetchedAt?: number;
 }
 
 export interface AppData {
@@ -120,7 +147,7 @@ export function emptyData(): AppData {
       baseCurrency: 'TRY',
       language: 'system',
       theme: 'system',
-      fetchEnabled: false,
+      fetchEnabled: true,
       lockEnabled: false,
       lockTimeoutSec: 60,
     },

@@ -42,7 +42,26 @@ const holding = z.object({
   note: z.string().optional(),
 });
 
-const snapshot = z.object({ date: z.string(), values: rates });
+const snapshotHolding = z.object({
+  holdingId: z.string(),
+  institutionId: z.string(),
+  institutionName: z.string(),
+  assetId: z.string(),
+  assetName: z.string(),
+  symbol: z.string().optional(),
+  kind: z.enum(ASSET_KINDS),
+  currency: z.string(),
+  quantity: z.number(),
+  unitPrice: z.number().optional(),
+  value: z.number().optional(),
+});
+
+const snapshot = z.object({
+  date: z.string(),
+  values: rates,
+  holdings: z.array(snapshotHolding).optional(),
+  usdRates: rates.optional(),
+});
 
 const settings = z.object({
   baseCurrency: z.string(),
@@ -61,6 +80,7 @@ const market = z.object({
   goldUsdPerOunce: z.number().optional(),
   goldUpdatedAt: z.number().optional(),
   manualGoldGram: z.object({ price: z.number(), currency: z.string() }).optional(),
+  pricesFetchedAt: z.number().optional(),
 });
 
 export const appDataSchema = z.object({

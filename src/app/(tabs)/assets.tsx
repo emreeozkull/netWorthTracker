@@ -176,6 +176,12 @@ function AssetCard({
             />
           ))}
           <Button
+            title={t('history.viewHistory')}
+            icon="time-outline"
+            variant="ghost"
+            onPress={() => router.push({ pathname: '/history/asset/[assetId]', params: { assetId: asset.id } })}
+          />
+          <Button
             title={t('assets.editAsset')}
             variant="ghost"
             onPress={() => router.push({ pathname: '/asset/edit', params: { id: asset.id } })}

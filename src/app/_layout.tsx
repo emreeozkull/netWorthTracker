@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, View } from 'react-native';
 
 import { LockOverlay } from '@/components/LockOverlay';
+import { useDailyPriceRefresh } from '@/components/useDailyPriceRefresh';
 import { Button, Card, Screen, Txt } from '@/components/ui';
 import i18n, { resolveLanguage } from '@/i18n';
 import { useAppLockWatcher } from '@/storage/lock';
@@ -23,6 +24,7 @@ export default function RootLayout() {
   const { t } = useTranslation();
 
   useAppLockWatcher();
+  useDailyPriceRefresh();
 
   useEffect(() => {
     void useAppStore.getState().init();
@@ -53,6 +55,8 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="institution/[id]" options={{ title: '' }} />
+          <Stack.Screen name="history/[date]" options={{ title: '' }} />
+          <Stack.Screen name="history/asset/[assetId]" options={{ title: '' }} />
           <Stack.Screen name="institution/edit" options={{ presentation: 'modal', title: t('forms.newInstitution') }} />
           <Stack.Screen name="asset/edit" options={{ presentation: 'modal', title: t('forms.editAsset') }} />
           <Stack.Screen name="holding/edit" options={{ presentation: 'modal', title: t('forms.newHolding') }} />

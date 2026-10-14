@@ -106,14 +106,26 @@ export interface LinePoint {
   value: number;
 }
 
+/** Formats a chart value; `compact` is used for the axis range. Defaults to money in `currency`. */
+export type ValueFormatter = (value: number, compact: boolean) => string;
+
 /** Single-series line with a touch crosshair and tooltip. */
-export function LineChart({ points, currency }: { points: LinePoint[]; currency: string }) {
+export function LineChart({
+  points,
+  currency,
+  format,
+}: {
+  points: LinePoint[];
+  currency: string;
+  format?: ValueFormatter;
+}) {
   const c = useColors();
   const f = useFormat();
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
   const height = 140;
   const padY = 8;
+  const fmt: ValueFormatter = format ?? ((v, compact) => f.money(v, currency, { compact }));
 
   if (points.length < 2) return null;
   const values = points.map((p) => p.value);
@@ -139,7 +151,7 @@ export function LineChart({ points, currency }: { points: LinePoint[]; currency:
     <View style={{ gap: 6 }}>
       <View style={styles.lineHeader}>
         <Txt variant="heading" tabular>
-          {f.money(shown.value, currency)}
+          {fmt(shown.value, false)}
         </Txt>
         <Txt variant="muted">{f.date(shown.date)}</Txt>
       </View>
@@ -168,7 +180,7 @@ export function LineChart({ points, currency }: { points: LinePoint[]; currency:
       <View style={styles.lineAxis}>
         <Txt variant="small">{f.date(points[0].date)}</Txt>
         <Txt variant="small" tabular>
-          {f.money(min, currency, { compact: true })} – {f.money(max, currency, { compact: true })}
+          {fmt(min, true)} – {fmt(max, true)}
         </Txt>
         <Txt variant="small">{f.date(points[points.length - 1].date)}</Txt>
       </View>
